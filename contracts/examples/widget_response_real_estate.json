@@ -1,0 +1,57 @@
+{
+  "status": "ok",
+  "query": "강남 아파트 실거래가",
+  "intent": {
+    "category": "real_estate",
+    "keywords": ["강남구", "아파트", "실거래가"],
+    "params": {
+      "region": "강남구"
+    },
+    "confidence": 0.91,
+    "matched_rules": ["real_estate_keyword", "region_keyword"]
+  },
+  "widget": {
+    "title": "강남구 부동산 실거래가 추이",
+    "summary": "공공데이터 기반 부동산 가격 흐름을 시각화했습니다.",
+    "chart": {
+      "type": "line",
+      "labels": ["4월", "5월", "6월"],
+      "datasets": [
+        {
+          "label": "평균 실거래가",
+          "data": [18.2, 18.5, 18.7],
+          "unit": "억원"
+        }
+      ]
+    },
+    "cards": [
+      {
+        "label": "평균 실거래가",
+        "value": "18.7",
+        "unit": "억원",
+        "description": "가장 최근 값"
+      }
+    ],
+    "table": {
+      "columns": ["기간", "평균 실거래가", "단위"],
+      "rows": [
+        ["4월", "18.2", "억원"],
+        ["5월", "18.5", "억원"],
+        ["6월", "18.7", "억원"]
+      ]
+    },
+    "source": {
+      "name": "공공데이터 기반 데모 데이터",
+      "url": null,
+      "updated_at": "2026-06-14",
+      "is_mock": true
+    }
+  },
+  "meta": {
+    "cache_hit": false,
+    "mock_mode": true,
+    "elapsed_ms": 10
+  },
+  "message": null,
+  "error_code": null
+}
