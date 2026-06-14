@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ 스마트 데이터 대시보드</title>
+    <!-- 폰트 로드 -->
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+    <!-- SheetJS (엑셀 파싱) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Chart.js (차트 렌더링) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --text-main: #ffffff;
+            --text-muted: #b0bec5;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', sans-serif;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: -webkit-linear-gradient(var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            padding: 30px;
+            margin: 20px;
+            width: 90%;
+            max-width: 1200px;
+        }
+
+        /* Drop Zone */
+        #drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: 50px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #drop-zone.dragover {
+            border-color: var(--primary);
+            background: rgba(0, 242, 254, 0.1);
+            transform: scale(1.02);
+        }
+
+        #drop-zone p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* Chart Area */
+        #chart-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .canvas-wrapper {
+            width: 100%;
+            height: 500px;
+        }
+
+        /* Button Group */
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-more {
+            padding: 12px 25px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(45deg, var(--secondary), var(--primary));
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline {
+            padding: 12px 25px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--primary);
+            background: transparent;
+            border: 2px solid var(--primary);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-more:hover, .btn-outline:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
+            background: linear-gradient(45deg, var(--secondary), var(--primary));
+            color: #fff;
+        }
+
+        .btn-more:active, .btn-outline:active {
+            transform: translateY(1px);
+        }
+
+        .status-msg {
+            text-align: center;
+            color: #b0bec5;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+
+        .controls-panel {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .dropdown-style {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--primary);
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-family: 'Pretendard', sans-serif;
+            outline: none;
+            cursor: pointer;
+        }
+        .dropdown-style:hover {
+            border-color: var(--secondary);
+        }
+        
+        /* 스크롤바 커스텀 */
+        #table-container {
+            width: 100%;
+            margin-top: 30px;
+            overflow-x: auto;
+            display: none;
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            color: var(--text-main);
+        }
+
+        table.data-table th, table.data-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        table.data-table th {
+            background: rgba(255,255,255,0.05);
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        table.data-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>✨ Auto Analyzer Web</h1>
+        <p>무거운 앱 설치 없이, 엑셀 파일을 드래그해서 바로 직관적인 대시보드를 확인하세요.</p>
+    </header>
+
+    <div class="glass-panel" id="upload-panel">
+        <div id="drop-zone">
+            <p>📁 여기에 엑셀/CSV 파일을 드래그 앤 드롭하거나 클릭하여 업로드하세요</p>
+            <input type="file" id="file-input" accept=".csv, .xlsx, .xls, .json" />
+        </div>
+    </div>
+
+    <div class="glass-panel" id="chart-container">
+        <h2 id="chart-title">데이터 분석 결과</h2>
+        
+        <div class="controls-panel" id="controls-panel" style="display:none;">
+            <label style="color:#b0bec5;">📊 기준(X축): 
+                <select id="cat-select" class="dropdown-style"></select>
+            </label>
+            <label style="color:#b0bec5;">📈 값(Y축): 
+                <select id="num-select" class="dropdown-style"></select>
+            </label>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="myChart"></canvas>
+        </div>
+        
+        <p class="status-msg" id="status-text"></p>
+        
+        <div class="btn-group">
+            <button class="btn-more" id="btn-load-more" style="display: none;">👇 데이터 10개 더보기</button>
+            <button class="btn-more" id="btn-load-all" style="display: none;">🔥 모든 데이터 한 번에 보기</button>
+            <button class="btn-outline" id="btn-toggle-table">📊 원본 데이터 표 보기</button>
+        </div>
+
+        <div id="table-container"></div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const chartContainer = document.getElementById('chart-container');
+        const uploadPanel = document.getElementById('upload-panel');
+        const chartTitle = document.getElementById('chart-title');
+        
+        const btnLoadMore = document.getElementById('btn-load-more');
+        const btnLoadAll = document.getElementById('btn-load-all');
+        const btnToggleTable = document.getElementById('btn-toggle-table');
+        
+        const statusText = document.getElementById('status-text');
+        const tableContainer = document.getElementById('table-container');
+        
+        const catSelect = document.getElementById('cat-select');
+        const numSelect = document.getElementById('num-select');
+
+        let myChartInstance = null;
+        
+        // 전역 상태 변수
+        let globalRawData = [];
+        let globalLabels = [];
+        let globalValues = [];
+        let currentLimit = 10;
+        let chartLabelName = "";
+        let isTableVisible = false;
+        let globalChartType = 'bar';
+
+        // 이벤트 리스너 설정
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // 파일 처리 로직
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                let workbook;
+                
+                if (file.name.toLowerCase().endsWith('.csv')) {
+                    let text = "";
+                    try {
+                        const decoder = new TextDecoder('utf-8', {fatal: true});
+                        text = decoder.decode(data);
+                    } catch(err) {
+                        const decoder = new TextDecoder('euc-kr');
+                        text = decoder.decode(data);
+                    }
+                    workbook = XLSX.read(text, {type: 'string'});
+                } else {
+                    workbook = XLSX.read(data, {type: 'array'});
+                }
+                
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, {defval: "", raw: false});
+                
+                globalRawData = json;
+                analyzeData(json, file.name);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 스마트 분석 및 차트 매칭 (JS 휴리스틱)
+        function analyzeData(data, filename, forceCat = null, forceNum = null) {
+            if (data.length === 0) {
+                alert("데이터가 비어있습니다.");
+                return;
+            }
+
+            const sample = data[0];
+            const keys = Object.keys(sample);
+            const excludeNumKeywords = ['연도', '년도', '순번', '번호', '코드', 'id', '일시', '날짜'];
+            const excludeCatKeywords = ['상세주소', '일시', '날짜', '시간', '순번', '번호', '코드', 'id'];
+
+            let numCols = [];
+            let idCols = [];
+            let actualStrCols = [];
+
+            keys.forEach(key => {
+                const val = sample[key];
+                const keyLower = key.toLowerCase();
+                let isNum = false;
+                
+                if (typeof val === 'number') {
+                    isNum = true;
+                } else if (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '') {
+                    isNum = true;
+                }
+                
+                if (isNum) {
+                    if (excludeNumKeywords.some(k => keyLower.includes(k))) {
+                        idCols.push(key);
+                    } else {
+                        numCols.push(key);
+                    }
+                } else {
+                    if (excludeCatKeywords.some(k => keyLower.includes(k))) {
+                        idCols.push(key);
+                    } else {
+                        actualStrCols.push(key);
+                    }
+                }
+            });
+
+            let selectedCat = forceCat;
+            if (!selectedCat) {
+                if (actualStrCols.length > 0) {
+                    selectedCat = actualStrCols[0];
+                } else if (idCols.length > 0) {
+                    selectedCat = idCols[0];
+                } else {
+                    selectedCat = keys.length > 0 ? keys[0] : null;
+                }
+            }
+
+            let selectedNum = forceNum;
+            if (!selectedNum) {
+                if (numCols.length > 0) {
+                    let preferredNum = numCols.find(k => k.includes('피해') || k.includes('금액') || k.includes('총') || k.includes('합계') || k.includes('비율') || k.includes('높이'));
+                    selectedNum = preferredNum ? preferredNum : numCols[numCols.length - 1];
+                }
+            }
+            
+            // 컨트롤 패널 렌더링
+            const controlsPanel = document.getElementById('controls-panel');
+            if (controlsPanel.style.display === 'none' || !forceCat) {
+                catSelect.innerHTML = '';
+                keys.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; opt.text = k;
+                    if(k === selectedCat) opt.selected = true;
+                    catSelect.appendChild(opt);
+                });
+                
+                numSelect.innerHTML = '<option value="빈도수(Count)">빈도수(Count)</option>';
+                numCols.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; opt.text = k;
+                    if(k === selectedNum) opt.selected = true;
+                    numSelect.appendChild(opt);
+                });
+                
+                controlsPanel.style.display = 'flex';
+            }
+
+            if (!selectedNum || selectedNum === "빈도수(Count)") {
+                selectedNum = "빈도수(Count)";
+                let counts = {};
+                data.forEach(row => {
+                    let val = row[selectedCat] || '알수없음';
+                    counts[val] = (counts[val] || 0) + 1;
+                });
+                
+                globalLabels = Object.keys(counts);
+                globalValues = Object.values(counts);
+                chartLabelName = selectedNum;
+                chartTitle.innerText = `[${selectedCat}] 항목별 비중 분석`;
+
+            } else {
+                let sums = {};
+                data.forEach(row => {
+                    let cat = row[selectedCat] || '알수없음';
+                    let val = Number(row[selectedNum]) || 0;
+                    sums[cat] = (sums[cat] || 0) + val;
+                });
+
+                globalLabels = Object.keys(sums);
+                globalValues = Object.values(sums);
+                chartLabelName = `총합 (${selectedNum})`;
+                chartTitle.innerText = `[${selectedCat}] 기준 [${selectedNum}] 비교 분석`;
+            }
+
+            // 날짜/시간 데이터인지 판별 (꺾은선 그래프용)
+            let isTimeSeries = false;
+            const timeKeywords = ['일', '월', '년', '날짜', '시간', '일시'];
+            if (selectedCat && timeKeywords.some(k => selectedCat.toLowerCase().includes(k))) {
+                isTimeSeries = true;
+            }
+
+            let paired = globalLabels.map((lbl, i) => ({ label: lbl, value: globalValues[i] }));
+
+            // 데이터 특성에 따른 차트 타입 결정 및 정렬
+            if (isTimeSeries) {
+                globalChartType = 'line';
+                // 시간순(오름차순) 정렬
+                paired.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+            } else if (globalLabels.length <= 5) {
+                globalChartType = 'doughnut';
+                // 비중 정렬
+                paired.sort((a, b) => b.value - a.value);
+            } else {
+                globalChartType = 'bar';
+                // 값 기준 내림차순 정렬
+                paired.sort((a, b) => b.value - a.value);
+            }
+            
+            globalLabels = paired.map(p => p.label);
+            globalValues = paired.map(p => p.value);
+
+            currentLimit = Math.min(10, globalLabels.length);
+            
+            // 차트 타입이 바뀌면 기존 인스턴스를 날려야 하므로 renderChart에서 처리하도록 유도
+            if (myChartInstance && myChartInstance.config.type !== globalChartType) {
+                myChartInstance.destroy();
+                myChartInstance = null;
+            }
+            
+            uploadPanel.style.display = 'none';
+            chartContainer.style.display = 'flex';
+            
+            // 데이터 표 미리 렌더링
+            renderTable();
+            
+            renderChart();
+            updateUIState();
+        }
+
+        // 동적 다채로운 색상 생성기
+        function getColors(count) {
+            const baseColors = [
+                'rgba(0, 242, 254, 0.8)', 'rgba(255, 117, 140, 0.8)', 'rgba(161, 140, 209, 0.8)',
+                'rgba(246, 211, 101, 0.8)', 'rgba(132, 250, 176, 0.8)', 'rgba(251, 194, 235, 0.8)',
+                'rgba(253, 160, 133, 0.8)', 'rgba(79, 172, 254, 0.8)', 'rgba(255, 126, 179, 0.8)', 'rgba(143, 211, 244, 0.8)'
+            ];
+            let colors = [...baseColors];
+            while(colors.length < count) {
+                let hue = (colors.length * 137.5) % 360; // 황금각 기반 색상 분산
+                colors.push(`hsla(${hue}, 80%, 65%, 0.8)`);
+            }
+            return colors.slice(0, count);
+        }
+
+        // 차트 렌더링 (Chart.js)
+        function renderChart() {
+            const displayLabels = globalLabels.slice(0, currentLimit);
+            const displayValues = globalValues.slice(0, currentLimit);
+
+            const ctx = document.getElementById('myChart').getContext('2d');
+            
+            // 기존 인스턴스가 있고 차트 타입이 동일하다면 부드러운 업데이트 수행
+            if (myChartInstance) {
+                myChartInstance.data.labels = displayLabels;
+                myChartInstance.data.datasets[0].data = displayValues;
+                
+                if (globalChartType === 'doughnut' || globalChartType === 'bar') {
+                    const dynamicColors = getColors(displayValues.length);
+                    myChartInstance.data.datasets[0].backgroundColor = dynamicColors;
+                    myChartInstance.data.datasets[0].hoverBackgroundColor = dynamicColors.map(c => c.replace('0.8', '1'));
+                }
+                
+                myChartInstance.update();
+                return;
+            }
+
+            // 새 차트 생성
+            let lineGradient = ctx.createLinearGradient(0, 0, 0, 400);
+            lineGradient.addColorStop(0, 'rgba(0, 242, 254, 0.6)');
+            lineGradient.addColorStop(1, 'rgba(0, 242, 254, 0.0)');
+            
+            let bgColors = getColors(displayValues.length);
+
+            let chartConfig = {
+                type: globalChartType,
+                data: {
+                    labels: displayLabels,
+                    datasets: [{
+                        label: chartLabelName,
+                        data: displayValues,
+                        backgroundColor: (globalChartType === 'line') ? lineGradient : bgColors,
+                        borderColor: (globalChartType === 'line') ? 'rgba(0, 242, 254, 1)' : 'rgba(255, 255, 255, 0.1)',
+                        borderWidth: (globalChartType === 'line') ? 3 : 1,
+                        borderRadius: globalChartType === 'bar' ? 6 : 0,
+                        hoverBackgroundColor: (globalChartType === 'line') ? lineGradient : bgColors.map(c => c.replace('0.8', '1'))
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 800,
+                        easing: 'easeOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ffffff', font: { family: 'Pretendard' } },
+                            display: globalChartType === 'doughnut' // 도넛은 레전드 표시
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleFont: { family: 'Pretendard', size: 14 },
+                            bodyFont: { family: 'Pretendard', size: 13 },
+                            padding: 12,
+                            cornerRadius: 8
+                        }
+                    }
+                }
+            };
+
+            // 차트 타입별 세부 옵션 적용
+            if (globalChartType === 'bar') {
+                chartConfig.options.indexAxis = 'y';
+                chartConfig.options.scales = {
+                    x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#b0bec5', font: { family: 'Pretendard' } } },
+                    y: { grid: { display: false }, ticks: { color: '#ffffff', font: { family: 'Pretendard', size: 13 } } }
+                };
+            } else if (globalChartType === 'line') {
+                chartConfig.options.indexAxis = 'x';
+                chartConfig.data.datasets[0].fill = true;
+                chartConfig.data.datasets[0].tension = 0.4; // 더 부드러운 곡선
+                chartConfig.options.scales = {
+                    x: { grid: { display: false }, ticks: { color: '#ffffff', font: { family: 'Pretendard', size: 13 }, maxRotation: 45, minRotation: 45 } },
+                    y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#b0bec5', font: { family: 'Pretendard' } } }
+                };
+            } else if (globalChartType === 'doughnut') {
+                chartConfig.data.datasets[0].borderColor = '#203a43'; // 배경과 맞춤
+                chartConfig.data.datasets[0].borderWidth = 2;
+                chartConfig.options.scales = {
+                    x: { display: false },
+                    y: { display: false }
+                };
+            }
+
+            myChartInstance = new Chart(ctx, chartConfig);
+        }
+
+        // 원본 데이터 표 렌더링
+        function renderTable() {
+            if (globalRawData.length === 0) return;
+            
+            let html = '<table class="data-table"><thead><tr>';
+            const keys = Object.keys(globalRawData[0]);
+            keys.forEach(k => html += `<th>${k}</th>`);
+            html += '</tr></thead><tbody>';
+            
+            globalRawData.forEach(row => {
+                html += '<tr>';
+                keys.forEach(k => html += `<td>${row[k]}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            
+            tableContainer.innerHTML = html;
+        }
+
+        // 이벤트 리스너들
+        document.getElementById('cat-select').addEventListener('change', (e) => {
+            currentLimit = 10;
+            analyzeData(globalRawData, "", e.target.value, document.getElementById('num-select').value);
+        });
+
+        document.getElementById('num-select').addEventListener('change', (e) => {
+            currentLimit = 10;
+            analyzeData(globalRawData, "", document.getElementById('cat-select').value, e.target.value);
+        });
+
+        btnLoadMore.addEventListener('click', () => {
+            if (currentLimit >= globalLabels.length) {
+                // 접기 로직
+                currentLimit = 10;
+            } else {
+                currentLimit += 10;
+                if (currentLimit > globalLabels.length) {
+                    currentLimit = globalLabels.length;
+                }
+            }
+            renderChart();
+            updateUIState();
+        });
+
+        btnLoadAll.addEventListener('click', () => {
+            currentLimit = globalLabels.length;
+            renderChart();
+            updateUIState();
+        });
+
+        btnToggleTable.addEventListener('click', () => {
+            isTableVisible = !isTableVisible;
+            if (isTableVisible) {
+                tableContainer.style.display = 'block';
+                btnToggleTable.innerText = '📈 원본 데이터 표 숨기기';
+                tableContainer.scrollIntoView({behavior: "smooth", block: "start"});
+            } else {
+                tableContainer.style.display = 'none';
+                btnToggleTable.innerText = '📊 원본 데이터 표 보기';
+            }
+        });
+
+        // 버튼 및 상태 메시지 렌더링 업데이트
+        function updateUIState() {
+            const total = globalLabels.length;
+            const showing = Math.min(currentLimit, total);
+            
+            statusText.innerText = `총 ${total}개의 데이터 항목 중 상위 ${showing}개를 보여주고 있습니다.`;
+            
+            const wrapper = document.querySelector('.canvas-wrapper');
+            if (showing > 20) {
+                wrapper.style.height = `${Math.max(500, showing * 25)}px`;
+            } else {
+                wrapper.style.height = '500px';
+            }
+            
+            if (total <= 10) {
+                statusText.innerText = `✅ 총 데이터 항목이 ${total}개로 적어, 화면에 전체를 한 번에 표시했습니다.`;
+                btnLoadMore.style.display = 'none';
+                btnLoadAll.style.display = 'none';
+            } else {
+                if (currentLimit < total) {
+                    btnLoadMore.style.display = 'block';
+                    btnLoadAll.style.display = 'block';
+                    btnLoadMore.innerText = '👇 데이터 10개 더보기';
+                    btnLoadMore.style.background = 'linear-gradient(45deg, var(--secondary), var(--primary))';
+                } else {
+                    btnLoadMore.style.display = 'block';
+                    btnLoadAll.style.display = 'none';
+                    btnLoadMore.innerText = '👆 원래대로(상위 10개만) 접기';
+                    btnLoadMore.style.background = 'linear-gradient(45deg, #ff758c, #ff7eb3)'; // 핑크색 계열로 변경
+                    statusText.innerText += " (모든 데이터를 차트로 불러왔습니다.)";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
