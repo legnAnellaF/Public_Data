@@ -226,6 +226,11 @@
         <p>무거운 앱 설치 없이, 엑셀 파일을 드래그해서 바로 직관적인 대시보드를 확인하세요.</p>
     </header>
 
+    <div class="glass-panel" id="backend-test-panel">
+      <input id="query-input" value="서울 미세먼지" />
+      <button id="btn-fetch-widget">백엔드 위젯 불러오기</button>
+    </div>
+
     <div class="glass-panel" id="upload-panel">
         <div id="drop-zone">
             <p>📁 여기에 엑셀/CSV 파일을 드래그 앤 드롭하거나 클릭하여 업로드하세요</p>
@@ -308,6 +313,97 @@
             }
         });
 
+        //데이터 호출 함수 - 조의기
+        const API_BASE_URL = "http://127.0.0.1:8000";
+
+        document.getElementById("btn-fetch-widget").addEventListener("click", async () => {
+          const query = document.getElementById("query-input").value.trim();
+          if (!query) {
+            alert("검색어를 입력하세요.");
+            return;
+          }
+        
+          await fetchBackendWidget(query);
+        });
+        
+        async function fetchBackendWidget(query) {
+          try {
+            statusText.innerText = "백엔드에서 데이터를 불러오는 중입니다...";
+        
+            const response = await fetch(`${API_BASE_URL}/api/widget`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                query,
+                page_url: window.location.href,
+                source: "donghwi_prototype"
+              })
+            });
+        
+            const data = await response.json();
+            renderBackendWidgetResponse(data);
+          } catch (error) {
+            console.error(error);
+            alert("백엔드 호출 중 오류가 발생했습니다.");
+          }
+        }
+
+        //백엔드 응답 - 조의기
+        function renderBackendWidgetResponse(apiResponse) {
+          if (apiResponse.status !== "ok" || !apiResponse.widget) {
+            chartTitle.innerText = "지원하지 않는 검색어입니다.";
+            statusText.innerText = apiResponse.message || "표시할 데이터가 없습니다.";
+            return;
+          }
+        
+          const widget = apiResponse.widget;
+          const chart = widget.chart;
+          const dataset = chart.datasets && chart.datasets.length > 0
+            ? chart.datasets[0]
+            : { label: "값", data: [] };
+        
+          globalLabels = chart.labels || [];
+          globalValues = (dataset.data || []).map(Number);
+          chartLabelName = dataset.label || widget.title || "데이터";
+        
+          if (chart.type === "line") {
+            globalChartType = "line";
+          } else if (chart.type === "bar") {
+            globalChartType = "bar";
+          } else {
+            globalChartType = "bar";
+          }
+        
+          chartTitle.innerText = widget.title || "공공데이터 분석 결과";
+        
+          globalRawData = [];
+          if (widget.table && widget.table.columns && widget.table.rows) {
+            globalRawData = widget.table.rows.map(row => {
+              const obj = {};
+              widget.table.columns.forEach((col, idx) => {
+                obj[col] = row[idx];
+              });
+              return obj;
+            });
+          }
+        
+          currentLimit = Math.min(10, globalLabels.length);
+        
+          if (myChartInstance) {
+            myChartInstance.destroy();
+            myChartInstance = null;
+          }
+        
+          uploadPanel.style.display = "none";
+          chartContainer.style.display = "flex";
+        
+          renderTable();
+          renderChart();
+          updateUIState();
+        }
+        
         // 파일 처리 로직
         function handleFile(file) {
             const reader = new FileReader();
