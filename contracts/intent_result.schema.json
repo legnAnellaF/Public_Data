@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Intent Analysis Result",
+  "type": "object",
+  "properties": {
+    "intent": {
+      "type": "string",
+      "description": "The classified category of the query, e.g., 'real_estate', 'weather'"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Extracted keywords from the query"
+    },
+    "params": {
+      "type": "object",
+      "description": "Extracted parameters like region, date, etc.",
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence score of the intent analysis (0.0 to 1.0)"
+    }
+  },
+  "required": ["intent", "keywords", "params", "confidence"]
+}

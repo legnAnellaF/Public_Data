@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Widget Response",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Response status, e.g., 'ok', 'error', 'no_data'"
+    },
+    "widget": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the widget"
+        },
+        "summary": {
+          "type": "string",
+          "description": "A short text summary of the data"
+        },
+        "chart": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Type of chart, e.g., 'bar', 'line'"
+            },
+            "labels": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "datasets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "data": { "type": "array", "items": { "type": "number" } },
+                  "unit": { "type": "string" }
+                },
+                "required": ["label", "data"]
+              }
+            }
+          },
+          "required": ["type", "labels", "datasets"]
+        },
+        "source": {
+          "type": "string",
+          "description": "The source of the public data"
+        }
+      },
+      "required": ["title", "summary", "chart", "source"]
+    }
+  },
+  "required": ["status"]
+}

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Search-Synchronized Data Overlay",
+  "version": "1.0",
+  "description": "검색 연동형 공공데이터 위젯 프로토타입",
+  "permissions": [],
+  "host_permissions": [
+    "*://*.google.com/*",
+    "*://*.google.co.kr/*",
+    "*://search.naver.com/*",
+    "http://localhost:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.google.com/search*",
+        "*://*.google.co.kr/search*",
+        "*://search.naver.com/search.naver*"
+      ],
+      "js": ["chart.umd.js", "content.js"],
+      "css": ["overlay/widget.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

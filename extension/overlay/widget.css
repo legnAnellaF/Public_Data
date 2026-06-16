@@ -1,0 +1,184 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+/* Premium Dark-mode Dashboard Styling */
+#pd-dashboard-container {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 550px; /* Wider for BI dashboard */
+  background: rgba(15, 23, 42, 0.85); /* Deep Slate */
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  z-index: 2147483647;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #f8fafc;
+  padding: 24px;
+  transform: translateY(50px);
+  opacity: 0;
+  animation: pd-slide-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  box-sizing: border-box;
+}
+
+@keyframes pd-slide-up {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+#pd-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+#pd-dashboard-title {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+  color: #f1f5f9;
+  letter-spacing: -0.3px;
+}
+
+#pd-dashboard-close {
+  background: none;
+  border: none;
+  font-size: 26px;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#pd-dashboard-close:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#pd-dashboard-summary {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 0;
+  margin-bottom: 24px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+/* KPI Cards Row */
+.pd-dashboard-kpi-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pd-kpi-card {
+  flex: 1;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.pd-kpi-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.pd-kpi-title {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.pd-kpi-val {
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(to right, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+/* Chart Area */
+#pd-dashboard-chart-area {
+  height: 240px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 14px;
+  padding: 20px;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  position: relative;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+}
+
+#pd-dashboard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0px;
+}
+
+#pd-dashboard-source {
+  font-size: 11px;
+  color: #475569;
+  margin: 0;
+  font-weight: 500;
+}
+
+#pd-dashboard-download {
+  color: #818cf8;
+  font-size: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: rgba(129, 140, 248, 0.1);
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+}
+
+#pd-dashboard-download:hover {
+  background: rgba(129, 140, 248, 0.2);
+  color: #a5b4fc;
+}
+
+/* Skeleton Loading Animation */
+.pd-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 400% 100%;
+  animation: pd-skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 8px;
+  color: transparent !important;
+}
+
+@keyframes pd-skeleton-loading {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+.pd-skeleton-title { height: 24px; width: 50%; margin-bottom: 10px; }
+.pd-skeleton-chart-large { height: 240px; width: 100%; border-radius: 14px; }
+.pd-kpi-card.pd-skeleton { height: 76px; }
