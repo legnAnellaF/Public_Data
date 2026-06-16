@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Public Data Search Widget",
+  "version": "0.1.0",
+  "description": "Detects search queries and displays public-data visualization widgets.",
+  "permissions": ["activeTab"],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.google.com/search*",
+        "https://search.naver.com/search.naver*",
+        "https://search.daum.net/search*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
