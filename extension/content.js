@@ -47,24 +47,42 @@ function getSearchQueryFromInput() {
   return "";
 }
 
-async function fetchWidgetData(query) {
-  const response = await fetch(`${API_BASE_URL}/api/widget`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      query,
-      page_url: window.location.href,
-      source: "browser_extension"
-    })
-  });
+function fetchWidgetData(query) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      {
+        type: "FETCH_PUBLIC_DATA_WIDGET",
+        query,
+        page_url: window.location.href
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({
+            ok: false,
+            error: chrome.runtime.lastError.message
+          });
+          return;
+        }
 
-  if (!response.ok) {
-    throw new Error(`Backend request failed: ${response.status}`);
+        resolve(response);
+      }
+    );
+  });
+}
+
+async function loadAndRenderWidget(query) {
+  renderLoadingOverlay(query);
+
+  const response = await fetchWidgetData(query);
+
+  if (!response || !response.ok) {
+    renderErrorOverlay(
+      response?.error || "백엔드 위젯 연결에 실패했습니다."
+    );
+    return;
   }
 
-  return response.json();
+  renderOverlay(response.data);
 }
 
 function renderOverlay(apiResponse) {
