@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
@@ -25,6 +26,30 @@ def test_widget_endpoint_returns_air_quality_widget_payload() -> None:
     assert body["widget"]["chart"]["labels"] == ["PM10", "PM2.5"]
     assert body["widget"]["source"]["is_mock"] is True
     assert body["meta"]["cache_hit"] is False
+    assert body["meta"]["mock_mode"] is True
+
+
+@pytest.mark.parametrize(
+    ("query", "category"),
+    [
+        ("서울 미세먼지", "environment_air_quality"),
+        ("강남 아파트 실거래가", "real_estate"),
+        ("서울 교통량", "traffic"),
+        ("오늘 기온", "weather"),
+        ("소비자물가", "economy"),
+    ],
+)
+def test_widget_endpoint_returns_supported_widget_payloads(query: str, category: str) -> None:
+    response = client.post("/api/widget", json={"query": query})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["query"] == query
+    assert body["intent"]["category"] == category
+    assert body["widget"] is not None
+    assert body["widget"]["title"]
+    assert body["widget"]["source"]["is_mock"] is True
     assert body["meta"]["mock_mode"] is True
 
 
