@@ -1,4 +1,5 @@
-# Public Data Widget
+# Public_Data
+공공데이터 공모전
 
 검색 연동형 공공데이터 위젯 프로젝트의 뼈대 코드입니다.
 
