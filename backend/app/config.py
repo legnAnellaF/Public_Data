@@ -50,6 +50,7 @@ class Settings:
     version: str
     app_env: str
     mock_public_api: bool
+    enable_dynamic_public_data: bool
     public_api_timeout_seconds: int
     public_api_cache_ttl_seconds: int
     public_data_service_key: str
@@ -81,6 +82,7 @@ def get_settings() -> Settings:
         version=os.getenv("APP_VERSION", "0.1.0"),
         app_env=os.getenv("APP_ENV", "development"),
         mock_public_api=_parse_bool(os.getenv("MOCK_PUBLIC_API"), True),
+        enable_dynamic_public_data=_parse_bool(os.getenv("ENABLE_DYNAMIC_PUBLIC_DATA"), False),
         public_api_timeout_seconds=_parse_int(os.getenv("PUBLIC_API_TIMEOUT_SECONDS"), 5),
         public_api_cache_ttl_seconds=_parse_int(os.getenv("PUBLIC_API_CACHE_TTL_SECONDS"), 300),
         public_data_service_key=os.getenv("PUBLIC_DATA_SERVICE_KEY", ""),

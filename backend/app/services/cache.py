@@ -38,8 +38,20 @@ class TTLCache:
         self._items.clear()
 
 
-def build_cache_key(category: str, params: dict[str, Any], query: str) -> str:
-    payload = {"category": category, "params": params, "query": query}
+def build_cache_key(
+    category: str,
+    params: dict[str, Any],
+    query: str,
+    target_link: str | None = None,
+    dynamic_mode: bool = False,
+) -> str:
+    payload = {
+        "category": category,
+        "params": params,
+        "query": query,
+        "target_link": target_link,
+        "dynamic_mode": dynamic_mode,
+    }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 

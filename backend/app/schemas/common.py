@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class APIStatus(str, Enum):
@@ -24,6 +24,8 @@ class CategoryId(str, Enum):
 
 
 class MetaInfo(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     cache_hit: bool = False
     mock_mode: bool = True
     elapsed_ms: int = Field(default=0, ge=0)

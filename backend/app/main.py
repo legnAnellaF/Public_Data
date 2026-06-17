@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.api.routes_categories import router as categories_router
+from backend.app.api.routes_datasets import router as datasets_router
 from backend.app.api.routes_health import router as health_router
 from backend.app.api.routes_intent import router as intent_router
 from backend.app.api.routes_widget import router as widget_router
@@ -34,6 +35,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(categories_router)
+app.include_router(datasets_router)
 app.include_router(intent_router)
 app.include_router(widget_router)
 
