@@ -18,7 +18,7 @@
         "https://search.naver.com/search.naver*",
         "https://search.daum.net/search*"
       ],
-      "js": ["content.js"],
+      "js": ["chart.umd.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

@@ -1,5 +1,13 @@
-const API_BASE_URL = "http://127.0.0.1:8000";
 const OVERLAY_ID = "public-data-widget-overlay";
+const CHART_PAGE_SIZE = 8;
+const CHART_COLORS = [
+  { fill: "rgba(37, 99, 235, 0.72)", line: "rgba(37, 99, 235, 0.18)", border: "#2563eb" },
+  { fill: "rgba(5, 150, 105, 0.72)", line: "rgba(5, 150, 105, 0.18)", border: "#059669" },
+  { fill: "rgba(217, 119, 6, 0.72)", line: "rgba(217, 119, 6, 0.18)", border: "#d97706" },
+  { fill: "rgba(219, 39, 119, 0.72)", line: "rgba(219, 39, 119, 0.18)", border: "#db2777" }
+];
+
+let activeChart = null;
 
 const CATEGORY_LABELS = {
   environment_air_quality: "대기질",
@@ -146,6 +154,7 @@ function renderOverlay(apiResponse) {
 
   shell.body.querySelector(".pdw-close").addEventListener("click", removeExistingOverlay);
   mountOverlay(shell.overlay);
+  hydrateChart(shell.body, widget.chart);
 }
 
 function renderLoadingOverlay(query) {
@@ -194,7 +203,17 @@ function renderMessageOverlay({ title, message, tone, apiResponse }) {
 }
 
 function removeExistingOverlay() {
+  destroyActiveChart();
   document.getElementById(OVERLAY_ID)?.remove();
+}
+
+function destroyActiveChart() {
+  if (!activeChart) {
+    return;
+  }
+
+  activeChart.destroy();
+  activeChart = null;
 }
 
 function createOverlayShell(tone = "") {
@@ -317,10 +336,71 @@ function createOverlayShell(tone = "") {
       border-radius: 8px;
     }
     #${OVERLAY_ID} .pdw-chart-title {
-      margin-bottom: 8px;
       font-size: 13px;
       font-weight: 700;
       color: #334155;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    #${OVERLAY_ID} .pdw-chart-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    #${OVERLAY_ID} .pdw-chart-meta {
+      flex: 0 0 auto;
+      color: #64748b;
+      font-size: 11px;
+    }
+    #${OVERLAY_ID} .pdw-chart-canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: 220px;
+    }
+    #${OVERLAY_ID} .pdw-chart-canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+    #${OVERLAY_ID} .pdw-chart-fallback {
+      display: none;
+    }
+    #${OVERLAY_ID} .pdw-chart.pdw-chart-fallback-mode .pdw-chart-canvas-wrap {
+      display: none;
+    }
+    #${OVERLAY_ID} .pdw-chart.pdw-chart-fallback-mode .pdw-chart-fallback {
+      display: block;
+    }
+    #${OVERLAY_ID} .pdw-chart-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    #${OVERLAY_ID} .pdw-chart-nav {
+      min-width: 54px;
+      min-height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #${OVERLAY_ID} .pdw-chart-nav:disabled {
+      cursor: not-allowed;
+      color: #94a3b8;
+      background: #f8fafc;
+    }
+    #${OVERLAY_ID} .pdw-chart-page {
+      min-width: 42px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 700;
     }
     #${OVERLAY_ID} .pdw-bar-row {
       display: grid;
@@ -410,32 +490,324 @@ function renderCards(cards) {
 }
 
 function renderChart(chart) {
-  const dataset = chart?.datasets?.[0];
-  if (!chart || !Array.isArray(chart.labels) || !dataset || !Array.isArray(dataset.data)) {
+  const normalized = normalizeChart(chart);
+  if (!normalized) {
     return "";
   }
 
-  const values = dataset.data.map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  const max = Math.max(...values, 1);
+  const title = normalized.datasets.length > 1
+    ? `${normalized.datasets[0].label} 외 ${normalized.datasets.length - 1}개 지표`
+    : normalized.datasets[0].label;
+  const totalPages = getChartPageCount(normalized);
+  const controls = totalPages > 1
+    ? `
+      <div class="pdw-chart-controls">
+        <button class="pdw-chart-nav" type="button" data-pdw-chart-prev>이전</button>
+        <span class="pdw-chart-page" data-pdw-chart-page>1 / ${totalPages}</span>
+        <button class="pdw-chart-nav" type="button" data-pdw-chart-next>다음</button>
+      </div>
+    `
+    : "";
 
   return `
-    <div class="pdw-chart">
-      <div class="pdw-chart-title">${escapeHtml(dataset.label || "차트")}</div>
-      ${chart.labels
-        .map((label, index) => {
-          const rawValue = Number(dataset.data[index] || 0);
-          const width = Math.max(2, Math.round((rawValue / max) * 100));
-          return `
-            <div class="pdw-bar-row">
-              <span>${escapeHtml(label)}</span>
-              <span class="pdw-bar-track"><span class="pdw-bar-fill" style="width: ${width}%"></span></span>
-              <span>${escapeHtml(rawValue)}${dataset.unit ? ` ${escapeHtml(dataset.unit)}` : ""}</span>
-            </div>
-          `;
-        })
-        .join("")}
+    <div class="pdw-chart" data-pdw-chart>
+      <div class="pdw-chart-title-row">
+        <div class="pdw-chart-title">${escapeHtml(title || "차트")}</div>
+        <div class="pdw-chart-meta">${escapeHtml(getChartTypeLabel(normalized.type))}</div>
+      </div>
+      <div class="pdw-chart-canvas-wrap">
+        <canvas class="pdw-chart-canvas"></canvas>
+      </div>
+      <div class="pdw-chart-fallback">${renderFallbackBars(normalized, 0)}</div>
+      ${controls}
     </div>
   `;
+}
+
+function normalizeChart(chart) {
+  if (!chart || !Array.isArray(chart.labels) || !Array.isArray(chart.datasets)) {
+    return null;
+  }
+
+  const labels = chart.labels.map((label) => String(label ?? ""));
+  if (labels.length === 0) {
+    return null;
+  }
+
+  const datasets = [];
+  chart.datasets.forEach((dataset, index) => {
+    const sourceData = Array.isArray(dataset?.data) ? dataset.data : [];
+    const hasFiniteData = sourceData
+      .slice(0, labels.length)
+      .some((value) => Number.isFinite(Number(value)));
+
+    if (!hasFiniteData) {
+      return;
+    }
+
+    datasets.push({
+      label: String(dataset?.label || `데이터 ${index + 1}`),
+      unit: String(dataset?.unit || ""),
+      data: labels.map((_, dataIndex) => {
+        const value = Number(sourceData[dataIndex]);
+        return Number.isFinite(value) ? value : 0;
+      })
+    });
+  });
+
+  if (datasets.length === 0) {
+    return null;
+  }
+
+  return {
+    type: normalizeChartType(chart.type),
+    labels,
+    datasets
+  };
+}
+
+function normalizeChartType(type) {
+  const normalizedType = String(type || "bar").toLowerCase();
+  if (["bar", "line", "horizontal_bar", "histogram"].includes(normalizedType)) {
+    return normalizedType;
+  }
+  return "bar";
+}
+
+function getChartTypeLabel(type) {
+  const labels = {
+    bar: "bar",
+    line: "line",
+    horizontal_bar: "horizontal",
+    histogram: "histogram"
+  };
+  return labels[type] || "chart";
+}
+
+function getRenderableChartType(type) {
+  return type === "line" ? "line" : "bar";
+}
+
+function getChartPageCount(chart) {
+  return Math.max(1, Math.ceil(chart.labels.length / CHART_PAGE_SIZE));
+}
+
+function getChartPageBounds(chart, page) {
+  const start = page * CHART_PAGE_SIZE;
+  const end = Math.min(start + CHART_PAGE_SIZE, chart.labels.length);
+  return { start, end };
+}
+
+function getChartPageLabels(chart, page) {
+  const { start, end } = getChartPageBounds(chart, page);
+  return chart.labels.slice(start, end);
+}
+
+function hydrateChart(root, chart) {
+  const chartElement = root.querySelector("[data-pdw-chart]");
+  const normalized = normalizeChart(chart);
+  if (!chartElement || !normalized) {
+    return;
+  }
+
+  const canvas = chartElement.querySelector(".pdw-chart-canvas");
+  const fallback = chartElement.querySelector(".pdw-chart-fallback");
+  const prevButton = chartElement.querySelector("[data-pdw-chart-prev]");
+  const nextButton = chartElement.querySelector("[data-pdw-chart-next]");
+  const pageInfo = chartElement.querySelector("[data-pdw-chart-page]");
+  const totalPages = getChartPageCount(normalized);
+  let currentPage = 0;
+
+  function updatePagination() {
+    if (pageInfo) {
+      pageInfo.textContent = `${currentPage + 1} / ${totalPages}`;
+    }
+    if (prevButton) {
+      prevButton.disabled = currentPage === 0;
+    }
+    if (nextButton) {
+      nextButton.disabled = currentPage >= totalPages - 1;
+    }
+  }
+
+  function renderFallbackPage() {
+    chartElement.classList.add("pdw-chart-fallback-mode");
+    if (fallback) {
+      fallback.innerHTML = renderFallbackBars(normalized, currentPage);
+    }
+    updatePagination();
+  }
+
+  function updateChartPage() {
+    if (!activeChart) {
+      renderFallbackPage();
+      return;
+    }
+
+    activeChart.data.labels = getChartPageLabels(normalized, currentPage);
+    activeChart.data.datasets = buildChartDatasets(normalized, currentPage);
+    activeChart.update();
+    updatePagination();
+  }
+
+  function wirePagination(updatePage) {
+    prevButton?.addEventListener("click", () => {
+      if (currentPage === 0) {
+        return;
+      }
+      currentPage -= 1;
+      updatePage();
+    });
+
+    nextButton?.addEventListener("click", () => {
+      if (currentPage >= totalPages - 1) {
+        return;
+      }
+      currentPage += 1;
+      updatePage();
+    });
+
+    updatePage();
+  }
+
+  if (typeof Chart === "undefined" || !canvas) {
+    wirePagination(renderFallbackPage);
+    return;
+  }
+
+  try {
+    activeChart = new Chart(canvas.getContext("2d"), {
+      type: getRenderableChartType(normalized.type),
+      data: {
+        labels: getChartPageLabels(normalized, 0),
+        datasets: buildChartDatasets(normalized, 0)
+      },
+      options: buildChartOptions(normalized)
+    });
+    chartElement.classList.remove("pdw-chart-fallback-mode");
+    wirePagination(updateChartPage);
+  } catch (error) {
+    console.warn("[Public Data Widget] Chart rendering failed", error);
+    destroyActiveChart();
+    wirePagination(renderFallbackPage);
+  }
+}
+
+function buildChartDatasets(chart, page) {
+  const { start, end } = getChartPageBounds(chart, page);
+  const actualType = getRenderableChartType(chart.type);
+  const isHistogram = chart.type === "histogram";
+  const isHorizontal = chart.type === "horizontal_bar";
+  const useCombo = chart.datasets.length > 1 && actualType === "bar" && !isHistogram && !isHorizontal;
+
+  return chart.datasets.map((dataset, index) => {
+    const color = CHART_COLORS[index % CHART_COLORS.length];
+    const datasetType = useCombo && index % 2 === 1 ? "line" : actualType;
+    const yAxisID = useCombo && index % 2 === 1 ? "y1" : "y";
+
+    return {
+      label: dataset.label,
+      data: dataset.data.slice(start, end),
+      type: datasetType,
+      yAxisID: isHorizontal ? undefined : yAxisID,
+      backgroundColor: datasetType === "line" ? color.line : color.fill,
+      borderColor: color.border,
+      borderWidth: 2,
+      borderRadius: datasetType === "bar" && !isHistogram ? 4 : 0,
+      categoryPercentage: isHistogram ? 1 : 0.72,
+      barPercentage: isHistogram ? 1 : 0.82,
+      fill: datasetType === "line" ? false : isHistogram,
+      tension: 0.35
+    };
+  });
+}
+
+function buildChartOptions(chart) {
+  const isHorizontal = chart.type === "horizontal_bar";
+  const isHistogram = chart.type === "histogram";
+  const actualType = getRenderableChartType(chart.type);
+  const useCombo = chart.datasets.length > 1 && actualType === "bar" && !isHistogram && !isHorizontal;
+  const scales = {
+    x: {
+      beginAtZero: isHorizontal,
+      grid: { color: "rgba(148, 163, 184, 0.18)" },
+      ticks: { color: "#475569", maxRotation: 0, autoSkip: true }
+    },
+    y: {
+      beginAtZero: true,
+      grid: { color: "rgba(148, 163, 184, 0.18)" },
+      ticks: { color: "#475569" }
+    }
+  };
+
+  if (useCombo) {
+    scales.y1 = {
+      beginAtZero: true,
+      position: "right",
+      grid: { drawOnChartArea: false },
+      ticks: { color: "#475569" }
+    };
+  }
+
+  return {
+    indexAxis: isHorizontal ? "y" : "x",
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: {
+        display: chart.datasets.length > 1,
+        position: "bottom",
+        labels: {
+          boxWidth: 10,
+          boxHeight: 10,
+          color: "#334155"
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label(context) {
+            const dataset = chart.datasets[context.datasetIndex] || {};
+            const rawValue = Number(context.raw);
+            const value = Number.isFinite(rawValue) ? rawValue : 0;
+            const label = context.dataset.label ? `${context.dataset.label}: ` : "";
+            return `${label}${formatChartValue(value, dataset.unit)}`;
+          }
+        }
+      }
+    },
+    scales
+  };
+}
+
+function renderFallbackBars(chart, page) {
+  const { start, end } = getChartPageBounds(chart, page);
+  const dataset = chart.datasets[0];
+  const labels = chart.labels.slice(start, end);
+  const values = dataset.data.slice(start, end);
+  const max = Math.max(...values.map((value) => Math.abs(value)), 1);
+
+  return labels
+    .map((label, index) => {
+      const rawValue = values[index] || 0;
+      const width = Math.max(2, Math.round((Math.abs(rawValue) / max) * 100));
+      const color = CHART_COLORS[index % CHART_COLORS.length].border;
+      return `
+        <div class="pdw-bar-row">
+          <span>${escapeHtml(label)}</span>
+          <span class="pdw-bar-track"><span class="pdw-bar-fill" style="width: ${width}%; background: ${color}"></span></span>
+          <span>${escapeHtml(formatChartValue(rawValue, dataset.unit))}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function formatChartValue(value, unit = "") {
+  const formatted = new Intl.NumberFormat("ko-KR", {
+    maximumFractionDigits: 2
+  }).format(value);
+  return unit ? `${formatted} ${unit}` : formatted;
 }
 
 function renderTable(table) {
@@ -482,10 +854,7 @@ function escapeHtml(value) {
     return;
   }
 
-  renderLoadingOverlay(query);
-  fetchWidgetData(query)
-    .then(renderOverlay)
-    .catch(() => {
-      renderErrorOverlay("백엔드가 실행 중인지 확인해주세요. 기본 주소는 http://127.0.0.1:8000 입니다.");
-    });
+  loadAndRenderWidget(query).catch(() => {
+    renderErrorOverlay("백엔드가 실행 중인지 확인해주세요. 기본 주소는 http://127.0.0.1:8000 입니다.");
+  });
 })();
