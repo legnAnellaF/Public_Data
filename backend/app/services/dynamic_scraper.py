@@ -67,6 +67,25 @@ def extract_keywords(text):
             ordered_keywords.append(word)
     return ordered_keywords
 
+def extract_core_keyword(query):
+    """
+    [AI Module] Extracts the single most important 'Target Entity' (e.g., country, brand, region, company)
+    from the natural language query to focus the visualization exactly on the user's intent.
+    """
+    target_entities = ["한국", "대만", "중국", "일본", "미국", "홍콩", "K브랜드", "서울", "제주도", "부산", "전기차", "삼성전자", "카카오", "네이버", "현대차"]
+    for entity in target_entities:
+        if entity in query:
+            return entity
+            
+    keywords = extract_keywords(query)
+    generic_kws = {"국내", "주식", "전국", "현황", "비교", "데이터", "통계", "정보", "목록"}
+    if keywords:
+        for kw in keywords:
+            if kw not in generic_kws:
+                return kw
+        return keywords[0]
+    return query
+
 def expand_related_keywords(keywords):
     expanded = []
     keyword_set = set(keywords)
@@ -88,6 +107,7 @@ def expand_related_keywords(keywords):
 
 def get_dynamic_widget_data(query: str, target_link: str = None):
     """Main pipeline for the backend."""
+    core_keyword = extract_core_keyword(query)
     keywords = expand_related_keywords(extract_keywords(query))
     if not keywords:
         return None
@@ -98,18 +118,18 @@ def get_dynamic_widget_data(query: str, target_link: str = None):
     # 2. 파일 다운로드 (target_link가 있으면 해당 링크로 직행)
     file_path = crawl_public_data_csv(main_kw, target_link)
     
-    # Fallback to dummy if crawling completely fails
+    # Fallback if crawling completely fails
     if not file_path:
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        file_path = os.path.join(desktop_path, f"{main_kw}_위젯더미.csv")
-        df_dummy = pd.DataFrame({
-            "항목명": [f"{main_kw} A", f"{main_kw} B", f"{main_kw} C", f"{main_kw} D", f"{main_kw} E"],
-            f"{main_kw}_수치": [120, 85, 93, 140, 78]
-        })
-        df_dummy.to_csv(file_path, index=False, encoding='utf-8-sig')
+        return {
+            "status": "error",
+            "title": "데이터를 찾을 수 없습니다",
+            "summary": f"공공데이터포털에서 '{main_kw}'에 대한 엑셀/CSV 다운로드 파일을 찾지 못했습니다. (OpenAPI 형태만 제공되거나 비공개 자료일 수 있습니다.)",
+            "chart": None,
+            "source": "시스템 알림"
+        }
 
     # 2. Use the new Intelligent Engine
-    schema = engine.process(file_path)
+    schema = engine.process(file_path, query, core_keyword)
     
     if schema and schema["status"] == "success":
         return {
@@ -120,6 +140,11 @@ def get_dynamic_widget_data(query: str, target_link: str = None):
                 "labels": schema["labels"],
                 "datasets": schema["datasets"]
             },
+            "table_data": schema.get("table_data"),
+            "views": schema.get("views"),
+            "available_years": schema.get("available_years"),
+            "available_dimensions": schema.get("available_dimensions"),
+            "core_keyword": schema.get("core_keyword"),
             "source": "공공데이터포털 실시간 다운로드 크롤링",
             "file_name": os.path.basename(file_path)
         }

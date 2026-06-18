@@ -34,7 +34,7 @@ def crawl_public_data_csv(keyword: str, target_link: str = None):
                 page.wait_for_load_state("networkidle")
             else:
                 # 1. 파일데이터(dType=FILE)만 검색하는 URL로 바로 이동 (sort=reqCo 활용건수/다운로드 많은 순으로 정렬하여 양질의 데이터 확보)
-                search_url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={keyword}&detailKeyword={keyword}&sort=reqCo"
+                search_url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={keyword}&detailKeyword={keyword}"
                 page.goto(search_url, timeout=15000)
                 
                 # 2. 검색 결과 리스트 렌더링 대기
@@ -78,3 +78,76 @@ def crawl_public_data_csv(keyword: str, target_link: str = None):
     except Exception as e:
         print(f"[Crawler] 크롤링 중 오류 발생: {e}")
         return None
+
+def crawl_public_data_top5_csv(keyword: str):
+    """
+    Playwright를 이용하여 검색된 상위 5개의 공공데이터를 모두 다운로드합니다.
+    다운로드된 파일들의 절대 경로 리스트를 반환합니다.
+    """
+    download_dir = os.path.join(os.path.expanduser("~"), "Desktop", "public_data_downloads")
+    os.makedirs(download_dir, exist_ok=True)
+    
+    # 이전 파일 정리
+    for f in glob.glob(os.path.join(download_dir, "*.csv")):
+        try: os.remove(f)
+        except: pass
+    for f in glob.glob(os.path.join(download_dir, "*.xlsx")):
+        try: os.remove(f)
+        except: pass
+
+    print(f"[Crawler] '{keyword}' 키워드로 Top 5 다중 다운로드를 시작합니다...")
+    downloaded_files = []
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(accept_downloads=True)
+            page = context.new_page()
+            
+            search_url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={keyword}&detailKeyword={keyword}"
+            page.goto(search_url, timeout=15000)
+            page.wait_for_selector(".result-list", timeout=10000)
+            
+            # 검색 결과 링크 모두 수집
+            links = page.locator(".result-list li dl dt a").all()
+            if not links:
+                print("[Crawler] 검색 결과가 없습니다.")
+                browser.close()
+                return []
+                
+            # 최대 5개 수집
+            top_links = []
+            for i in range(min(5, len(links))):
+                top_links.append(links[i].get_attribute("href"))
+                
+            # 순차적으로 방문하여 다운로드
+            for i, link in enumerate(top_links):
+                try:
+                    if link.startswith('/'):
+                        link = "https://www.data.go.kr" + link
+                        
+                    page.goto(link, timeout=15000)
+                    page.wait_for_load_state("networkidle")
+                    
+                    target_btn = page.locator("a:has-text('다운로드'), a.button:has-text('다운로드'), a[href*='fileDownload'], a:has-text('CSV')").first
+                    if not target_btn.is_visible():
+                        continue
+                        
+                    with page.expect_download(timeout=15000) as download_info:
+                        target_btn.click()
+                        
+                    download = download_info.value
+                    suggested_filename = f"{i+1}_{download.suggested_filename}"
+                    final_path = os.path.join(download_dir, suggested_filename)
+                    download.save_as(final_path)
+                    print(f"[Crawler] {i+1}번째 파일 다운로드 완료: {final_path}")
+                    downloaded_files.append(final_path)
+                except Exception as ex:
+                    print(f"[Crawler] {i+1}번째 파일 다운로드 실패: {ex}")
+                    
+            browser.close()
+            return downloaded_files
+            
+    except Exception as e:
+        print(f"[Crawler] 다중 크롤링 중 오류 발생: {e}")
+        return downloaded_files

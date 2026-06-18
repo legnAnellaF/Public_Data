@@ -47,7 +47,7 @@ def search_datasets(request: ExtensionRequest):
     main_kw = " ".join(keywords[:2]) if keywords else request.query
     
     q = urllib.parse.quote(main_kw)
-    url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={q}&detailKeyword={q}&sort=reqCo"
+    url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={q}&detailKeyword={q}"
     
     try:
         resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
@@ -71,10 +71,24 @@ def search_datasets(request: ExtensionRequest):
             if link and not link.startswith('http'):
                 link = "https://www.data.go.kr" + link
                 
+            spans = li.select('.info-data span')
+            views = "0"
+            downloads = "0"
+            mod_date = "N/A"
+            
+            if len(spans) >= 8:
+                mod_date = spans[3].text.strip()
+                views = spans[5].text.strip()
+                downloads = spans[7].text.strip()
+                
+            # Create a factual reason based on actual metadata
+            reason = f"📊 [사실 정보] 조회수 {views}회, 다운로드 {downloads}건을 기록한 신뢰도 높은 공공데이터입니다. (수정일: {mod_date})"
+            
             items.append({
                 "title": title,
                 "provider": provider,
-                "link": link
+                "link": link,
+                "reason": reason
             })
             
         return {"status": "ok", "results": items}
@@ -84,11 +98,34 @@ def search_datasets(request: ExtensionRequest):
 
 @app.post("/api/widget")
 def get_widget(request: ExtensionRequest):
-    """
-    Analyzes the query, uses Playwright to crawl data.go.kr, and processes it via AI Engine.
-    """
+    query = request.query
+    
+    if request.target_link == "SMART_JOIN":
+        from app.services.dynamic_crawler import crawl_public_data_top5_csv
+        from app.services.smart_join_engine import join_engine
+        from app.services.dynamic_scraper import extract_core_keyword
+        
+        file_paths = crawl_public_data_top5_csv(query)
+        if not file_paths:
+            return {"status": "error", "message": "No data files found for smart join."}
+            
+        merged_file = join_engine.join_datasets(file_paths, query)
+        if not merged_file:
+            return {"status": "error", "message": "Failed to intelligently merge datasets."}
+            
+        core_keyword = extract_core_keyword(query)
+        from app.services.intelligent_visualizer import engine
+        schema = engine.process(merged_file, query, core_keyword)
+        if not schema:
+            return {"status": "error", "message": "Failed to visualize merged data."}
+            
+        # Update summary for Smart Join
+        schema["summary"] = f"✨ [AI Smart Join] 5개의 공공데이터를 융합 분석한 결과입니다.\n" + schema.get("summary", "")
+        return {"status": "ok", "widget": schema}
+        
+    # Default single file logic
     try:
-        dynamic_data = get_dynamic_widget_data(request.query, request.target_link)
+        dynamic_data = get_dynamic_widget_data(query, request.target_link)
         if dynamic_data:
             return {
                 "status": "ok",
