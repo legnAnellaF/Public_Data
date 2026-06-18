@@ -1,15 +1,15 @@
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend.app.schemas.common import APIStatus, CategoryId
+from backend.app.schemas.common import APIStatus, MetaInfo
 
 
-class SearchRequest(BaseModel):
+class DatasetSearchRequest(BaseModel):
     query: str = Field(..., max_length=200)
     page_url: Optional[str] = None
     source: str = "browser_extension"
-    target_link: Optional[str] = None
+    limit: int = Field(default=5, ge=1, le=10)
 
     @field_validator("query")
     @classmethod
@@ -26,14 +26,19 @@ class SearchRequest(BaseModel):
         return stripped or "browser_extension"
 
 
-class IntentResult(BaseModel):
-    category: CategoryId
-    keywords: list[str] = Field(default_factory=list)
-    params: dict[str, Any] = Field(default_factory=dict)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    matched_rules: list[str] = Field(default_factory=list)
+class DatasetSearchItem(BaseModel):
+    title: str
+    provider: str = ""
+    link: str
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    source: str = "data.go.kr"
 
 
-class IntentResponse(BaseModel):
+class DatasetSearchResponse(BaseModel):
     status: APIStatus = APIStatus.OK
-    intent: IntentResult
+    query: str
+    results: list[DatasetSearchItem] = Field(default_factory=list)
+    meta: MetaInfo
+    message: Optional[str] = None
+    error_code: Optional[str] = None

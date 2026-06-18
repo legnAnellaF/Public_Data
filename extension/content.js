@@ -55,33 +55,66 @@ function getSearchQueryFromInput() {
   return "";
 }
 
-function fetchWidgetData(query) {
+function sendRuntimeMessage(payload) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      {
-        type: "FETCH_PUBLIC_DATA_WIDGET",
-        query,
-        page_url: window.location.href
-      },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          resolve({
-            ok: false,
-            error: chrome.runtime.lastError.message
-          });
-          return;
-        }
-
-        resolve(response);
+    chrome.runtime.sendMessage(payload, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({
+          ok: false,
+          error: chrome.runtime.lastError.message
+        });
+        return;
       }
-    );
+
+      resolve(response);
+    });
   });
 }
 
-async function loadAndRenderWidget(query) {
-  renderLoadingOverlay(query);
+function fetchDatasetCandidates(query) {
+  return sendRuntimeMessage({
+    type: "SEARCH_PUBLIC_DATASETS",
+    query,
+    page_url: window.location.href,
+    limit: 5
+  });
+}
 
-  const response = await fetchWidgetData(query);
+function fetchWidgetData(query, targetLink = "") {
+  const payload = {
+    type: "FETCH_PUBLIC_DATA_WIDGET",
+    query,
+    page_url: window.location.href
+  };
+
+  if (targetLink) {
+    payload.target_link = targetLink;
+  }
+
+  return sendRuntimeMessage(payload);
+}
+
+async function loadAndRenderPublicData(query) {
+  renderLoadingOverlay(query, "검색어와 연관된 공공데이터를 확인하고 있습니다.");
+
+  const searchResponse = await fetchDatasetCandidates(query);
+  const results = Array.isArray(searchResponse?.data?.results) ? searchResponse.data.results : [];
+
+  if (searchResponse?.ok && searchResponse.data?.status === "ok" && results.length > 0) {
+    renderDatasetCandidates(query, results);
+    return;
+  }
+
+  await loadAndRenderWidget(query);
+}
+
+async function loadAndRenderWidget(query, targetLink = "") {
+  renderLoadingOverlay(
+    query,
+    targetLink ? "선택한 공공데이터를 위젯으로 변환하고 있습니다." : "검색어에 맞는 공공데이터를 확인하고 있습니다."
+  );
+
+  const response = await fetchWidgetData(query, targetLink);
 
   if (!response || !response.ok) {
     renderErrorOverlay(
@@ -91,6 +124,55 @@ async function loadAndRenderWidget(query) {
   }
 
   renderOverlay(response.data);
+}
+
+function renderDatasetCandidates(query, results) {
+  const items = results.slice(0, 5);
+  const shell = createOverlayShell();
+
+  shell.body.innerHTML = `
+    <div class="pdw-header-row">
+      <div>
+        <div class="pdw-eyebrow">${escapeHtml(query)}</div>
+        <h2>공공데이터셋 후보</h2>
+      </div>
+      <button class="pdw-close" type="button" aria-label="닫기">×</button>
+    </div>
+    <p class="pdw-summary">data.go.kr 파일데이터 검색 결과입니다.</p>
+    <div class="pdw-dataset-list">
+      ${items
+        .map(
+          (item, index) => `
+            <div class="pdw-dataset-item">
+              <div class="pdw-dataset-copy">
+                <div class="pdw-dataset-title">${escapeHtml(item.title || "공공데이터셋")}</div>
+                <div class="pdw-dataset-provider">${escapeHtml(item.provider || item.source || "data.go.kr")}</div>
+                ${item.summary || item.description ? `<div class="pdw-dataset-summary">${escapeHtml(item.summary || item.description)}</div>` : ""}
+              </div>
+              <button class="pdw-dataset-button" type="button" data-pdw-dataset-index="${index}">보기</button>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <button class="pdw-fallback-button" type="button" data-pdw-fallback-widget>기본 위젯</button>
+  `;
+
+  shell.body.querySelector(".pdw-close").addEventListener("click", removeExistingOverlay);
+  shell.body.querySelector("[data-pdw-fallback-widget]").addEventListener("click", () => {
+    loadAndRenderWidget(query).catch(() => renderErrorOverlay("백엔드가 실행 중인지 확인해주세요."));
+  });
+  shell.body.querySelectorAll("[data-pdw-dataset-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.pdwDatasetIndex);
+      const item = items[index];
+      loadAndRenderWidget(query, item?.link || "").catch(() => {
+        renderErrorOverlay("선택한 데이터셋을 불러오지 못했습니다.");
+      });
+    });
+  });
+
+  mountOverlay(shell.overlay);
 }
 
 function renderOverlay(apiResponse) {
@@ -157,7 +239,7 @@ function renderOverlay(apiResponse) {
   hydrateChart(shell.body, widget.chart);
 }
 
-function renderLoadingOverlay(query) {
+function renderLoadingOverlay(query, message = "검색어에 맞는 공공데이터를 확인하고 있습니다.") {
   const shell = createOverlayShell("loading");
   shell.body.innerHTML = `
     <div class="pdw-header-row">
@@ -167,7 +249,7 @@ function renderLoadingOverlay(query) {
       </div>
       <button class="pdw-close" type="button" aria-label="닫기">×</button>
     </div>
-    <p class="pdw-summary">검색어에 맞는 공공데이터를 확인하고 있습니다.</p>
+    <p class="pdw-summary">${escapeHtml(message)}</p>
   `;
   shell.body.querySelector(".pdw-close").addEventListener("click", removeExistingOverlay);
   mountOverlay(shell.overlay);
@@ -298,6 +380,55 @@ function createOverlayShell(tone = "") {
       margin: 12px 0;
       color: #475569;
       font-size: 14px;
+    }
+    #${OVERLAY_ID} .pdw-dataset-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    #${OVERLAY_ID} .pdw-dataset-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    #${OVERLAY_ID} .pdw-dataset-copy {
+      min-width: 0;
+    }
+    #${OVERLAY_ID} .pdw-dataset-title {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+    #${OVERLAY_ID} .pdw-dataset-provider,
+    #${OVERLAY_ID} .pdw-dataset-summary {
+      margin-top: 3px;
+      color: #64748b;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    #${OVERLAY_ID} .pdw-dataset-button,
+    #${OVERLAY_ID} .pdw-fallback-button {
+      min-height: 30px;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    #${OVERLAY_ID} .pdw-dataset-button {
+      min-width: 48px;
+    }
+    #${OVERLAY_ID} .pdw-fallback-button {
+      width: 100%;
+      margin-top: 10px;
     }
     #${OVERLAY_ID} .pdw-cards {
       display: grid;
@@ -854,7 +985,7 @@ function escapeHtml(value) {
     return;
   }
 
-  loadAndRenderWidget(query).catch(() => {
+  loadAndRenderPublicData(query).catch(() => {
     renderErrorOverlay("백엔드가 실행 중인지 확인해주세요. 기본 주소는 http://127.0.0.1:8000 입니다.");
   });
 })();

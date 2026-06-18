@@ -2,6 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.config import get_settings
+from backend.app.api import routes_widget
 from backend.app.services.cache import widget_response_cache
 
 
@@ -10,6 +12,7 @@ client = TestClient(app)
 
 def setup_function() -> None:
     widget_response_cache.clear()
+    get_settings.cache_clear()
 
 
 def test_widget_endpoint_returns_air_quality_widget_payload() -> None:
@@ -72,3 +75,48 @@ def test_widget_endpoint_returns_unsupported_for_unknown_query() -> None:
     assert body["intent"]["category"] == "unknown"
     assert body["widget"] is None
     assert body["message"] == "현재 지원하지 않는 검색어입니다."
+
+
+def test_widget_endpoint_keeps_mock_flow_when_dynamic_flag_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_DYNAMIC_PUBLIC_DATA", "false")
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/widget",
+        json={
+            "query": "서울 미세먼지",
+            "target_link": "https://www.data.go.kr/tcs/dss/selectFileDataDetailView.do?publicDataPk=test",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["widget"]["source"]["is_mock"] is True
+    assert body["meta"]["mock_mode"] is True
+    assert "dynamic_failed_reason" not in body["meta"]
+
+
+def test_widget_endpoint_falls_back_to_mock_when_dynamic_pipeline_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_DYNAMIC_PUBLIC_DATA", "true")
+    get_settings.cache_clear()
+
+    def fail_dynamic(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("playwright unavailable")
+
+    monkeypatch.setattr(routes_widget, "get_dynamic_widget_data", fail_dynamic)
+
+    response = client.post(
+        "/api/widget",
+        json={
+            "query": "서울 미세먼지",
+            "target_link": "https://www.data.go.kr/tcs/dss/selectFileDataDetailView.do?publicDataPk=test",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["widget"]["source"]["is_mock"] is True
+    assert body["meta"]["mock_mode"] is True
+    assert body["meta"]["dynamic_failed_reason"] == "RuntimeError"

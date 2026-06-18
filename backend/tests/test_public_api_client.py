@@ -15,6 +15,7 @@ def _settings(**overrides: object) -> Settings:
         "version": "0.1.0",
         "app_env": "test",
         "mock_public_api": True,
+        "enable_dynamic_public_data": False,
         "public_api_timeout_seconds": 1,
         "public_api_cache_ttl_seconds": 300,
         "public_data_service_key": "",
