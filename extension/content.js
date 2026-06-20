@@ -942,7 +942,7 @@ function renderDashboardInner(legacyWidget = null) {
                 layout: { 
                     padding: { 
                         top: 30, 
-                        right: isHorizontal ? 80 : 0,
+                        right: isHorizontal ? 150 : 0,
                         bottom: (actualChartType === 'pie' || actualChartType === 'doughnut') ? 25 : 0
                     } 
                 },
