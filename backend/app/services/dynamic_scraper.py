@@ -72,13 +72,17 @@ def extract_core_keyword(query):
     [AI Module] Extracts the single most important 'Target Entity' (e.g., country, brand, region, company)
     from the natural language query to focus the visualization exactly on the user's intent.
     """
-    target_entities = ["한국", "대만", "중국", "일본", "미국", "홍콩", "K브랜드", "서울", "제주도", "부산", "전기차", "삼성전자", "카카오", "네이버", "현대차"]
+    target_entities = [
+        "한국", "대만", "중국", "일본", "미국", "홍콩", "K브랜드", 
+        "서울", "제주", "부산", "인천", "대구", "광주", "대전", "울산", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "세종",
+        "전기차", "삼성전자", "카카오", "네이버", "현대차", "SK", "LG"
+    ]
     for entity in target_entities:
         if entity in query:
             return entity
             
     keywords = extract_keywords(query)
-    generic_kws = {"국내", "주식", "전국", "현황", "비교", "데이터", "통계", "정보", "목록"}
+    generic_kws = {"국내", "주식", "전국", "현황", "비교", "데이터", "통계", "정보", "목록", "평가액", "교통량", "수치", "비율", "조회"}
     if keywords:
         for kw in keywords:
             if kw not in generic_kws:
