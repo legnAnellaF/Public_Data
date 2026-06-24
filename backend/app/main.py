@@ -54,6 +54,24 @@ def search_datasets(request: ExtensionRequest):
         soup = BeautifulSoup(resp.text, 'html.parser')
         results = soup.select('.result-list li')
         
+        # [Smart Fallback] 검색 결과가 없을 경우 단일 키워드로 재검색
+        if not results and keywords:
+            fallback_kws = [kw for kw in keywords if kw in ["상권", "창업", "카페", "상점", "영업", "매출", "인구", "부동산", "금융", "아파트", "주택"]]
+            if not fallback_kws:
+                fallback_kws = [keywords[0]]
+                if len(keywords) > 1:
+                    fallback_kws.append(keywords[1])
+            for fb_kw in fallback_kws:
+                print(f"[Search Fallback] '{main_kw}' 검색 결과 없음. '{fb_kw}'(으)로 재검색...")
+                q = urllib.parse.quote(fb_kw)
+                url = f"https://www.data.go.kr/tcs/dss/selectDataSetList.do?dType=FILE&keyword={q}&detailKeyword={q}"
+                resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                results = soup.select('.result-list li')
+                if results:
+                    main_kw = fb_kw
+                    break
+        
         items = []
         for li in results[:5]:
             title_el = li.select_one('dt a .title')

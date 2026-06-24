@@ -5,3 +5,7 @@ requests
 python-dotenv
 pandas
 openpyxl
+matplotlib
+seaborn
+beautifulsoup4
+playwright

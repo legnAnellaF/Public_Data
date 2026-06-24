@@ -29,46 +29,9 @@ class IntelligentVisualizerEngine:
         ]
 
     def _load_file(self, file_path):
-        """[1단계] 파일 확장자 판별 및 인코딩 방어벽을 통한 데이터 로드"""
-        file_ext = os.path.splitext(file_path)[-1].lower()
-        import zipfile
-        import glob
-        
-        # 한국 공공데이터의 ZIP 압축 해제 로직
-        if file_ext == ".zip":
-            extract_dir = os.path.splitext(file_path)[0]
-            try:
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    # euckr encoding for korean filenames in zip
-                    zip_ref.extractall(extract_dir)
-                
-                # Find the first valid csv or excel file in the extracted directory
-                extracted_files = []
-                for ext in ('*.csv', '*.xlsx', '*.xls'):
-                    extracted_files.extend(glob.glob(os.path.join(extract_dir, '**', ext), recursive=True))
-                
-                if extracted_files:
-                    print(f"[INFO] ZIP 파일 내에서 {os.path.basename(extracted_files[0])} 파일을 분석합니다.")
-                    return self._load_file(extracted_files[0]) # 재귀 호출로 CSV/Excel 로드
-            except Exception as e:
-                print(f"[ERROR] ZIP 압축 해제 실패: {e}")
-                return None
-                
-        if file_ext in [".xlsx", ".xls"]:
-            try:
-                return pd.read_excel(file_path)
-            except Exception as e:
-                print(f"[ERROR] Excel 로드 실패: {e}")
-                return None
-        elif file_ext == ".csv":
-            # 한국 공공데이터 특유의 변칙 인코딩 순회 감지
-            for enc in ["utf-8", "cp949", "euc-kr", "utf-8-sig"]:
-                try:
-                    return pd.read_csv(file_path, encoding=enc)
-                except:
-                    continue
-        print("[ERROR] 지원하지 않는 파일 형식이거나 손상된 파일입니다.")
-        return None
+        """[1단계] 범용 공공데이터 정규화 엔진을 통한 데이터 로드 및 정제"""
+        from app.services.excel_processor import normalize_excel
+        return normalize_excel(file_path)
 
     def _infer_data_types(self, df):
         """[2단계] 가로/세로 항목의 실제 데이터 형태 추론 엔진"""
@@ -102,13 +65,12 @@ class IntelligentVisualizerEngine:
                 continue
 
             # 3. 수치형 데이터 판별 (단위 문자만 조심스럽게 제거)
-            # 숫자, 소수점, 마이너스, 쉼표, 그리고 특정 단위(원, 건, 명, %, 개, 백만)만 남기고 제거하는 대신,
-            # 특정 단위 기호와 쉼표만 지운 뒤 숫자로 변환 가능한지 체크
-            sample_str = valid_series.astype(str).str.replace(r"[,\s원건명%개]", "", regex=True)
+            sample_str = valid_series.astype(str).str.replace(r"[,\s원건명%개만천억(추정)이상미만]", "", regex=True)
             num_conv = pd.to_numeric(sample_str, errors="coerce")
 
-            # 수치 변환 성공률이 70% 이상이면 수치형 컬럼으로 확정
-            if num_conv.notna().sum() / len(valid_series) > 0.7:
+            # 수치 변환 성공률이 70% 이상이거나 컬럼명에 매출, 금액, 비용, 인구, 점포수 등이 포함되어 있으면 수치형으로 확정
+            force_numeric_kws = ["매출", "금액", "비용", "인구", "점포", "단가", "수익", "수입", "수출", "합계", "통행량"]
+            if num_conv.notna().sum() / len(valid_series) > 0.7 or any(kw in col_str for kw in force_numeric_kws):
                 df[col] = num_conv.fillna(0)  # 원본 데이터 가공 후 덮어쓰기
                 numerical_cols.append(col)
             else:
@@ -117,7 +79,7 @@ class IntelligentVisualizerEngine:
         return temporal_cols, numerical_cols, categorical_cols
 
     def _select_optimal_axes(self, df, temporal, numerical, categorical, query=""):
-        """[3단계] 데이터 성격에 알맞은 최적의 X축과 다중 Y축 자동 선정 알고리즘"""
+        """[3단계] 초보 창업자 맞춤형 최적의 X축과 다중 Y축 자동 선정 알고리즘 (LLM & 시맨틱 가중치 엔진)"""
         final_x = None
         final_y_list = []
 
@@ -125,36 +87,56 @@ class IntelligentVisualizerEngine:
         invalid_y = ["번호", "순번", "id", "순위", "no", "연번", "연도"]
         valid_numerical = [col for col in numerical if not any(inv in col.lower() for inv in invalid_y)]
         
-        # 0. 와이드 포맷 시계열(Wide-format Time Series) 감지 로직
+        # 초보 창업자 특화 주요 지표 가중치 사전 (Startup Domain Keyword Rules)
+        startup_y_keywords = {
+            "상권": ["점포", "유동인구", "매장", "상가", "영업", "폐업", "밀도", "인구"],
+            "매출": ["매출", "단가", "수익", "이익", "판매", "금액", "결제"],
+            "수출입": ["관세", "수출", "수입", "무역", "달러", "중량", "환율"],
+            "인구": ["인구", "가구", "세대", "연령", "거주", "유동"],
+            "경쟁": ["경쟁", "업체수", "점포수", "밀집도", "유사"],
+            "비용": ["임대료", "권리금", "보증금", "배달비", "관리비", "비용", "단가"],
+            "창업": ["매출", "유동인구", "점포", "창업", "폐업", "금액", "합계"]
+        }
+
+        # 0. 와이드 포맷 시계열 감지 로직
         time_keywords = ["년", "월", "일", "분기", "현황", "상반기", "하반기"]
-        time_cols = []
-        for col in valid_numerical:
-            col_str = str(col)
-            if any(tk in col_str for tk in time_keywords):
-                time_cols.append(col)
+        time_cols = [col for col in valid_numerical if any(tk in str(col) for tk in time_keywords)]
                 
         if len(time_cols) >= 2:
-            # 시계열 숫자 칼럼이 2개 이상이라면, 시간에 따른 변화 추이 데이터이므로 모든 시간 칼럼을 수집
             final_y_list = time_cols
         else:
-            # 1. 쿼리 기반 지능형 매칭 (Dynamic Semantic Column Matching) - 핵심 지표 단 1개만 추출
+            # 1. 쿼리 기반 창업 도메인 지능형 매칭 (Dynamic Semantic Startup Column Matching)
             if query:
                 import re
                 query_words = re.findall(r'[가-힣A-Za-z0-9]+', query)
-                for col in valid_numerical:
-                    col_str = str(col)
-                    for w in query_words:
-                        # 2글자 이상 의미있는 단어가 겹치면 해당 컬럼을 타겟 지표로 즉시 확정
-                        if len(w) >= 2 and (w in col_str or col_str in w):
-                            if col not in final_y_list:
-                                final_y_list.append(col)
-                            # 단 1개의 지표만 추출
-                            if len(final_y_list) >= 1:
+                
+                # 창업 키워드 매칭 시도
+                for q_word in query_words:
+                    for domain, kws in startup_y_keywords.items():
+                        if domain in q_word or q_word in domain or any(kw in q_word for kw in kws):
+                            for col in valid_numerical:
+                                col_str = str(col)
+                                if any(kw in col_str for kw in kws) and col not in final_y_list:
+                                    final_y_list.append(col)
+                            if final_y_list:
                                 break
-                    if len(final_y_list) >= 1:
+                    if final_y_list:
                         break
+
+                # 일반 쿼리 단어 매칭
+                if not final_y_list:
+                    for col in valid_numerical:
+                        col_str = str(col)
+                        for w in query_words:
+                            if len(w) >= 2 and (w in col_str or col_str in w):
+                                if col not in final_y_list:
+                                    final_y_list.append(col)
+                                if len(final_y_list) >= 1:
+                                    break
+                        if len(final_y_list) >= 1:
+                            break
             
-            # 2. 매칭되는 항목이 없을 경우 기존의 일반적인 우선순위 기반 매칭 (Fallback)
+            # 2. 매칭되는 항목이 없을 경우 기존 우선순위 기반 매칭 (Fallback)
             if not final_y_list:
                 for kw in self.y_priority_keywords:
                     for col in valid_numerical:
@@ -165,18 +147,24 @@ class IntelligentVisualizerEngine:
                     if len(final_y_list) >= 1:
                         break
                         
-                if not final_y_list:
-                    for col in valid_numerical:
-                        if len(final_y_list) >= 1:
-                            break
-                        if col not in final_y_list:
-                            final_y_list.append(col)
+                if not final_y_list and valid_numerical:
+                    final_y_list.append(valid_numerical[0])
 
         # X축 선정: 무의미한 번호 컬럼 제외
         valid_categorical = [col for col in categorical if not any(inv in col.lower() for inv in invalid_y)]
         
-        # 1. 쿼리 기반 지능형 X축 매칭 ('별' 등 접미사 제거 후 매칭)
-        if query and valid_categorical:
+        # 1. 상권/지역/업종 등 핵심 그룹화(X축) 키워드 우선 매칭
+        x_priority_keywords = ["지역", "시도", "시군구", "상권", "업종", "구분", "명칭", "이름", "지점", "장소", "행정동", "자치구", "시도명", "시군구명"]
+        for kw in x_priority_keywords:
+            for col in valid_categorical:
+                if kw in str(col) and 2 <= df[col].nunique() <= 100:
+                    final_x = col
+                    break
+            if final_x:
+                break
+
+        # 2. 쿼리 기반 지능형 X축 매칭 ('별' 등 접미사 제거 후 매칭)
+        if not final_x and query and valid_categorical:
             import re
             query_words = re.findall(r'[가-힣A-Za-z0-9]+', query)
             clean_query_words = [w.replace('별', '') for w in query_words]
@@ -189,7 +177,7 @@ class IntelligentVisualizerEngine:
                 if final_x:
                     break
 
-        # 2. 매칭 안 될 경우 기본 로직 (Fallback)
+        # 3. 매칭 안 될 경우 기본 로직 (Fallback)
         if not final_x:
             if temporal:
                 final_x = temporal[0]
@@ -200,10 +188,69 @@ class IntelligentVisualizerEngine:
                         break
                 if not final_x:
                     final_x = valid_categorical[0]
-            else:
+            elif df.columns.size > 0:
                 final_x = df.columns[0]
 
         return final_x, final_y_list
+
+    def _generate_startup_precautions(self, df, x, y_list, query):
+        """
+        [AI 창업 주의사항 및 체크리스트 생성 엔진]
+        선택된 데이터의 구조와 지표 흐름(하락 추세, 특정 지역/항목 편중, 이상치 등)을 분석하여
+        초보 창업자에게 꼭 필요한 실질적 주의사항과 인사이트를 도출합니다.
+        """
+        import os
+        import requests
+        
+        precautions = []
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        openai_key = os.getenv("OPENAI_API_KEY")
+        
+        # 샘플 데이터 구성 (LLM 전달용)
+        sample_records = ""
+        if x and y_list and not df.empty:
+            sample_df = df[[x] + y_list].head(10).to_dict(orient='records')
+            sample_records = str(sample_df)
+
+        if gemini_key:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={gemini_key}"
+                prompt = f"당신은 초보 창업자 컨설턴트입니다. 다음 공공데이터 샘플과 창업 아이디어('{query}')를 분석하여 초보 창업자가 주의해야 할 점, 체크리스트, 리스크 요인을 3가지로 요약해주세요. 데이터 샘플: {sample_records}"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data['candidates'][0]['content']['parts'][0]['text']
+                    precautions = [line.strip() for line in text.split('\n') if line.strip()]
+            except Exception as e:
+                print(f"[WARN] Gemini API 호출 실패, 룰 기반 생성으로 대체: {e}")
+        elif openai_key:
+            try:
+                url = "https://api.openai.com/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+                prompt = f"당신은 초보 창업자 컨설턴트입니다. 다음 공공데이터 샘플과 창업 아이디어('{query}')를 분석하여 초보 창업자가 주의해야 할 점, 체크리스트, 리스크 요인을 3가지로 요약해주세요. 데이터 샘플: {sample_records}"
+                payload = {"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}]}
+                resp = requests.post(url, headers=headers, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data['choices'][0]['message']['content']
+                    precautions = [line.strip() for line in text.split('\n') if line.strip()]
+            except Exception as e:
+                print(f"[WARN] OpenAI API 호출 실패, 룰 기반 생성으로 대체: {e}")
+
+        # Fallback (API 키가 없거나 실패했을 경우 강력한 룰 기반 시맨틱 분석 엔진 작동)
+        if not precautions:
+            precautions.append(f"📌 [{query} 관련 핵심 점검] 공공데이터 분석 결과, '{x}' 기준 '{', '.join(y_list)}' 지표의 변동성이 존재하므로 특정 항목에 편중된 투자는 위험할 수 있습니다.")
+            if y_list and len(df) >= 2:
+                mean_val = df[y_list[0]].mean()
+                max_val = df[y_list[0]].max()
+                if max_val > mean_val * 3:
+                    precautions.append(f"⚠️ [극단적 격차 주의] 최대값({max_val:.1f})이 평균({mean_val:.1f})의 3배 이상으로 큽니다. 상위 권역/항목이 시장을 독식하는 구조인지 확인이 필요합니다.")
+                else:
+                    precautions.append(f"📊 [균등 분포 시장] 지표들이 비교적 균등하게 분포되어 있습니다. 입지나 단가 외에 차별화된 마케팅 전략이 요구됩니다.")
+            precautions.append(f"💡 [초보 창업 필수 체크리스트] 본 공공데이터 외에도 주변 상권 유동인구, 배달앱 입점 경쟁도, 그리고 초기 6개월치 고정비(임대료, 인건비) 확보를 반드시 점검하세요.")
+
+        return precautions
 
     def _determine_strategy_and_calculate(self, df, x, y_list, temporal_cols, query, core_keyword=""):
         """[4단계] 시각화 전략 수립, 대용량 데이터 정보 추출 및 8가지 차트 맵핑"""
@@ -214,22 +261,17 @@ class IntelligentVisualizerEngine:
             df = df[mask].copy()
 
         # [Task 4] 지역명 표준화 (Region Normalization)
-        if any(kw in str(x) for kw in ['지역', '시도', '시/도']):
+        if any(kw in str(x) for kw in ['지역', '시도', '시/도', '시군구', '상권']):
             def normalize_region(val):
                 val_str = str(val).strip()
                 mapping = {
                     "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천",
                     "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종", "세종시": "세종",
-                    "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
-                    "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북",
-                    "전라남도": "전남", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주", "제주도": "제주"
+                    "강원특별자치도": "강원", "전북특별자치도": "전북", "제주특별자치도": "제주"
                 }
                 for k, v in mapping.items():
-                    if val_str == k:
-                        return v
-                for v in mapping.values():
-                    if val_str.startswith(v):
-                        return v
+                    if val_str.startswith(k):
+                        return val_str.replace(k, v)
                 return val_str
             df[x] = df[x].apply(normalize_region)
         # 연령(Age) 데이터 스마트 그룹화 (10대, 20대 등)
@@ -316,9 +358,9 @@ class IntelligentVisualizerEngine:
             else:
                 chart_type = "line"
                 strategy_reason = "시간 흐름 추이를 표현하기 위해 꺾은선 그래프(line)를 선택했습니다."
-        elif len(y_list) >= 2 and pd.api.types.is_numeric_dtype(df[x]):
-            chart_type = "scatter"
-            strategy_reason = "두 숫자형 지표 간의 상관관계를 파악하기 위해 산점도(scatter)를 선택했습니다."
+        elif len(y_list) >= 2:
+            chart_type = "bar"
+            strategy_reason = "다양한 핵심 지표들을 지역/항목별로 한눈에 비교 분석하기 위해 다중 막대 그래프(bar)를 선택했습니다."
         elif unique_x_count <= 3 and len(y_list) == 1:
             chart_type = "pie"
             strategy_reason = "항목 수가 적어 전체 점유율을 한눈에 파악하기 좋은 원그래프(pie)를 선택했습니다."
@@ -465,12 +507,15 @@ class IntelligentVisualizerEngine:
         first_d = dimensions[0]
         first_view = views[first_y][first_d]
         
+        startup_precautions = self._generate_startup_precautions(df, x, y_list, query)
+        
         widget_schema = {
             "status": "success",
             "available_years": available_years,
             "available_dimensions": dimensions,
             "views": views,
             "core_keyword": core_keyword,
+            "startup_precautions": startup_precautions,
             
             # fallback for older code
             "chart_type": first_view["chart_type"],
@@ -480,7 +525,7 @@ class IntelligentVisualizerEngine:
             "table_data": first_view["table_data"]
         }
 
-        print("\n[SUCCESS] 프론트엔드 웹 위젯 레이어 통신용 표준 JSON 스키마 생성 완료")
+        print("\n[SUCCESS] 프론트엔드 웹 위젯 레이어 통신용 표준 JSON 스키마 생성 완료 (창업 주의사항 포함)")
         return widget_schema
 
 # Singleton instance

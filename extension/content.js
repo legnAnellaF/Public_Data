@@ -464,10 +464,26 @@ function renderDashboardInner(legacyWidget = null) {
         </div>
     `;
 
+    let precautionsHtml = '';
+    if (widget.startup_precautions && widget.startup_precautions.length > 0) {
+        const listHtml = widget.startup_precautions.map(p => `<li style="margin-bottom: 8px; line-height: 1.5; font-size: 13px; color: #1e293b;">${p}</li>`).join('');
+        precautionsHtml = `
+            <div style="margin-bottom: 15px; padding: 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                <div style="color: #b45309; font-size: 15px; font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚨</span> <span>초보 창업자를 위한 AI 심층 분석 및 주의사항</span>
+                </div>
+                <ul style="margin: 0; padding-left: 20px;">
+                    ${listHtml}
+                </ul>
+            </div>
+        `;
+    }
+
     container.innerHTML = `
         ${heroHtml}
         ${tableHtml}
         ${chartHtml}
+        ${precautionsHtml}
         
         <div id="pd-dashboard-pagination-container" style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 10px; display: ${totalItemsRaw > itemsPerPage ? 'flex' : 'none'};">
             <button id="pd-btn-prev" style="background: #f8fafc; border: 1px solid #e2e8f0; color: #94a3b8; font-weight: bold; font-size: 13px; cursor: pointer; padding: 6px 16px; border-radius: 4px; transition: all 0.2s;" disabled>
@@ -596,7 +612,7 @@ function renderDashboardInner(legacyWidget = null) {
                     type: 'linear',
                     display: false, // 수치를 숨겨서 깔끔하게
                     beginAtZero: true,
-                    grace: '25%'
+                    grace: '50%'
                 };
             }
         }
@@ -941,7 +957,7 @@ function renderDashboardInner(legacyWidget = null) {
                 maintainAspectRatio: false,
                 layout: { 
                     padding: { 
-                        top: 30, 
+                        top: 45, 
                         right: isHorizontal ? 150 : 0,
                         bottom: (actualChartType === 'pie' || actualChartType === 'doughnut') ? 25 : 0
                     } 
@@ -952,7 +968,7 @@ function renderDashboardInner(legacyWidget = null) {
                     legend: {
                         display: isMultiDataset || isScatter,
                         position: 'top',
-                        labels: { color: '#e5e7eb', font: {family: "'Pretendard', sans-serif"} }
+                        labels: { color: '#475569', font: {family: "'Pretendard', sans-serif"} }
                     },
                     tooltip: {
                         backgroundColor: 'rgba(15, 23, 42, 0.85)',

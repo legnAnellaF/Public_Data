@@ -53,6 +53,10 @@ def crawl_public_data_csv(keyword: str, target_link: str = None):
             
             # 4. 다운로드 버튼 찾기
             # 공공데이터포털의 다양한 다운로드 버튼 형태 모두 대응
+            try:
+                page.wait_for_selector("a:has-text('다운로드'), a.button:has-text('다운로드'), a[href*='fileDownload'], a:has-text('CSV')", timeout=5000)
+            except:
+                pass
             target_btn = page.locator("a:has-text('다운로드'), a.button:has-text('다운로드'), a[href*='fileDownload'], a:has-text('CSV')").first
                 
             if not target_btn.is_visible():
